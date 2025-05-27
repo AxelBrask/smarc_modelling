@@ -5,7 +5,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
 from message_filters import Subscriber, ApproximateTimeSynchronizer
-
+from sam_msgs.msg import ThrusterAngles
 from smarc_msgs.msg import PercentStamped, ThrusterRPM, ThrusterFeedback
 from piml_msgs.msg import SynchedData, ThrusterRPMStamped
 from nav_msgs.msg import Odometry
@@ -17,17 +17,17 @@ class AddTimestamp(Node):
 
         # NOTE: Since we reassign the stamps for some of the topics we need to do it to all topics we are going to use
         # so that they exist in the same "timeline"
-
         # Creating publishers
-        self.thruster1_cmd_pub = self.create_publisher(ThrusterRPMStamped, "/piml/thruster1_cmd", 10)
-        self.thruster2_cmd_pub = self.create_publisher(ThrusterRPMStamped, "/piml/thruster2_cmd", 10)
-        self.thruster1_fb_pub = self.create_publisher(ThrusterFeedback, "/piml/thruster1_fb", 10) 
-        self.thruster2_fb_pub = self.create_publisher(ThrusterFeedback, "/piml/thruster2_fb", 10)
-        self.lcg_cmd_pub = self.create_publisher(PercentStamped, "/piml/lcg_cmd", 10)
-        self.lcg_fb_pub = self.create_publisher(PercentStamped, "/piml/lcg_fb", 10)
-        self.vbs_cmd_pub = self.create_publisher(PercentStamped, "/piml/vbs_cmd", 10)
-        self.vbs_fb_pub = self.create_publisher(PercentStamped, "/piml/vbs_fb", 10)
-        self.odom_pub = self.create_publisher(Odometry, "/piml/odom", 10)
+        self.thruster1_cmd_pub = self.create_publisher(ThrusterRPMStamped, "piml/thruster1_cmd", 10)
+        self.thruster2_cmd_pub = self.create_publisher(ThrusterRPMStamped, "piml/thruster2_cmd", 10)
+        self.thruster1_fb_pub = self.create_publisher(ThrusterFeedback, "piml/thruster1_fb", 10) 
+        self.thruster2_fb_pub = self.create_publisher(ThrusterFeedback, "piml/thruster2_fb", 10)
+        self.lcg_cmd_pub = self.create_publisher(PercentStamped, "piml/lcg_cmd", 10)
+        self.lcg_fb_pub = self.create_publisher(PercentStamped, "piml/lcg_fb", 10)
+        self.vbs_cmd_pub = self.create_publisher(PercentStamped, "piml/vbs_cmd", 10)
+        self.vbs_fb_pub = self.create_publisher(PercentStamped, "piml/vbs_fb", 10)
+        self.odom_pub = self.create_publisher(Odometry, "piml/odom", 10)
+        self.thruster_vector_pub = self. create_publisher(ThrusterAngles,"/piml/thrust_vector_cmd",10)
 
         # Subscribe to topics we want to add timestamps to
         self.thruster1_cmd_sub = self.create_subscription(ThrusterRPM, "/sam/core/thruster1_cmd", self.add_stamp_thruster1, 10) # No stamp at all
@@ -39,8 +39,13 @@ class AddTimestamp(Node):
         self.vbs_cmd_sub = self.create_subscription(PercentStamped, "/sam/core/vbs_cmd", self.add_stamp_vbs_cmd, 10) # No data in stamp
         self.vbs_fb_sub = self.create_subscription(PercentStamped, "/sam/core/vbs_fb", self.add_stamp_vbs_fb, 10) # Has data in stamp but need to reassign
         self.odom_sub = self.create_subscription(Odometry, "/mocap/sam_mocap/odom", self.add_stamp_odom, 10)
+        self.thruster_vector_sub = self.create_subscription(ThrusterAngles,"/sam/core/thrust_vector_cmd",self.add_stamp_vector,10)
 
     # A bit heavily hard coded but whatevs 
+    def add_stamp_vector(self,msg):
+        msg_stamped = msg
+        msg_stamped.header.stamp = self.get_clock().now().to_msg()
+        self.thruster_vector_pub.publish(msg_stamped)
 
     def add_stamp_odom(self, msg):
         msg_stamped = msg
@@ -95,70 +100,70 @@ class AddTimestamp(Node):
 
 
 # Compiles a synchronized message from SAM for easy creation of training data
-class SyncSubscriber(Node):
-    def __init__(self):
-        super().__init__('sync_subscriber')
+# class SyncSubscriber(Node):
+#     def __init__(self):
+#         super().__init__('sync_subscriber')
 
-        self.thruster1_cmd_msg = ThrusterRPM
-        self.thruster2_cmd_msg = ThrusterRPM
-        self.lcg_cmd_msg = PercentStamped
-        self.vbs_cmd_msg = PercentStamped
-        self.thruster1_fb_msg = ThrusterFeedback
-        self.thruster2_fb_msg = ThrusterFeedback
+#         self.thruster1_cmd_msg = ThrusterRPM
+#         self.thruster2_cmd_msg = ThrusterRPM
+#         self.lcg_cmd_msg = PercentStamped
+#         self.vbs_cmd_msg = PercentStamped
+#         self.thruster1_fb_msg = ThrusterFeedback
+#         self.thruster2_fb_msg = ThrusterFeedback
 
-        # LCG
-        self.lcg_cmd = Subscriber(self, PercentStamped, "/piml/lcg_cmd")
-        self.lcg_fb = Subscriber(self, PercentStamped, "/piml/lcg_fb")
+#         # LCG
+#         self.lcg_cmd = Subscriber(self, PercentStamped, "/piml/lcg_cmd")
+#         self.lcg_fb = Subscriber(self, PercentStamped, "/piml/lcg_fb")
 
-        # VBS
-        self.vbs_cmd = Subscriber(self, PercentStamped, "/piml/vbs_cmd") # Missing stamp
-        self.vbs_fb = Subscriber(self, PercentStamped, "/piml/vbs_fb")
+#         # VBS
+#         self.vbs_cmd = Subscriber(self, PercentStamped, "/piml/vbs_cmd") # Missing stamp
+#         self.vbs_fb = Subscriber(self, PercentStamped, "/piml/vbs_fb")
 
-        # Thrusters
-        self.thruster1_cmd_sub = self.create_subscription(ThrusterRPMStamped, "/piml/thruster1_cmd", self.thruster1_cmd_cb, 10) # Missing stamp
-        self.thruster2_cmd_sub = self.create_subscription(ThrusterRPMStamped, "/piml/thruster2_cmd", self.thruster2_cmd_cb, 10) # Missing stamp
-        self.thruster1_fb = Subscriber(self, ThrusterFeedback, "/piml/thruster1_fb") # Missing stamp
-        self.thruster2_fb = Subscriber(self, ThrusterFeedback, "/piml/thruster2_fb") # Missing stamp
+#         # Thrusters
+#         self.thruster1_cmd_sub = self.create_subscription(ThrusterRPMStamped, "/piml/thruster1_cmd", self.thruster1_cmd_cb, 10) # Missing stamp
+#         self.thruster2_cmd_sub = self.create_subscription(ThrusterRPMStamped, "/piml/thruster2_cmd", self.thruster2_cmd_cb, 10) # Missing stamp
+#         self.thruster1_fb = Subscriber(self, ThrusterFeedback, "/piml/thruster1_fb") # Missing stamp
+#         self.thruster2_fb = Subscriber(self, ThrusterFeedback, "/piml/thruster2_fb") # Missing stamp
     
-        # Pose & Velocities
-        self.odom = Subscriber(self, Odometry, "/piml/odom")
+#         # Pose & Velocities
+#         self.odom = Subscriber(self, Odometry, "/piml/odom")
 
-        # All the topics we want synched
-        sub_list = [self.lcg_cmd, self.lcg_fb, self.vbs_cmd, self.vbs_fb, self.thruster1_fb, self.thruster2_fb, self.odom]
+#         # All the topics we want synched
+#         sub_list = [self.lcg_cmd, self.lcg_fb, self.vbs_cmd, self.vbs_fb, self.thruster1_fb, self.thruster2_fb, self.odom]
 
-        # Set up the ApproximateTimeSynchronizer
-        self.synched_message = ApproximateTimeSynchronizer(
-            sub_list,
-            queue_size = 100,  # How long we wait
-            slop = 0.1, # Max time difference, seems like we can make this rather small for SAM and still get a lot of data
-            allow_headerless=True
-        )
+#         # Set up the ApproximateTimeSynchronizer
+#         self.synched_message = ApproximateTimeSynchronizer(
+#             sub_list,
+#             queue_size = 100,  # How long we wait
+#             slop = 0.1, # Max time difference, seems like we can make this rather small for SAM and still get a lot of data
+#             allow_headerless=True
+#         )
 
-        self.synched_pub = self.create_publisher(SynchedData, "/synched_data", 10)
-        self.synched_message.registerCallback(self.callback)
+#         self.synched_pub = self.create_publisher(SynchedData, "/synched_data", 10)
+#         self.synched_message.registerCallback(self.callback)
 
-    def callback(self, lcg_cmd, lcg_fb, vbs_cmd, vbs_fb, thruster1_fb, thruster2_fb, odom):
+#     def callback(self, lcg_cmd, lcg_fb, vbs_cmd, vbs_fb, thruster1_fb, thruster2_fb, odom):
         
-        # Making message
-        sync_msg = SynchedData()
-        sync_msg.lcg_fb = lcg_fb
-        sync_msg.lcg_cmd = lcg_cmd
-        sync_msg.odom_gt = odom
-        sync_msg.thruster1_fb = thruster1_fb
-        sync_msg.thruster1_cmd = self.thruster1_cmd_msg
-        sync_msg.thruster2_fb = thruster2_fb
-        sync_msg.thruster2_cmd = self.thruster2_cmd_msg
-        sync_msg.vbs_fb = vbs_fb
-        sync_msg.vbs_cmd = vbs_cmd
+#         # Making message
+#         sync_msg = SynchedData()
+#         sync_msg.lcg_fb = lcg_fb
+#         sync_msg.lcg_cmd = lcg_cmd
+#         sync_msg.odom_gt = odom
+#         sync_msg.thruster1_fb = thruster1_fb
+#         sync_msg.thruster1_cmd = self.thruster1_cmd_msg
+#         sync_msg.thruster2_fb = thruster2_fb
+#         sync_msg.thruster2_cmd = self.thruster2_cmd_msg
+#         sync_msg.vbs_fb = vbs_fb
+#         sync_msg.vbs_cmd = vbs_cmd
 
-        # Publish message
-        self.synched_pub.publish(sync_msg)
-        self.get_logger().info("Published synched data")
+#         # Publish message
+#         self.synched_pub.publish(sync_msg)
+#         self.get_logger().info("Published synched data")
 
-    def thruster1_cmd_cb(self, msg):
-        self.thruster1_cmd_msg = msg
-    def thruster2_cmd_cb(self, msg):
-        self.thruster2_cmd_msg = msg
+#     def thruster1_cmd_cb(self, msg):
+#         self.thruster1_cmd_msg = msg
+#     def thruster2_cmd_cb(self, msg):
+#         self.thruster2_cmd_msg = msg
 
     
 
@@ -167,17 +172,14 @@ def main(args=None):
     rclpy.init(args=args)
 
     node_stamp = AddTimestamp()
-    node_synch = SyncSubscriber()
 
     executor = MultiThreadedExecutor()
     executor.add_node(node_stamp)
-    executor.add_node(node_synch)
     
 
     executor.spin()
 
     node_stamp.destroy_node()
-    node_synch.destroy_node()
     rclpy.shutdown()
 
 if __name__ == '__main__':

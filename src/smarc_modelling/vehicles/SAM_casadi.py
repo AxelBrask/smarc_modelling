@@ -323,6 +323,7 @@ class SAM_casadi():
         if self.create_model == True and export == False:
             x_sym = ca.MX.sym('x', 19,1)
             u_ref_sym = ca.MX.sym('u_ref', 6,1)
+            dt_sym    = ca.MX.sym('dt')
             eta = x_sym[0:7]
             nu = x_sym[7:13]
             u = x_sym[13:19]
@@ -339,11 +340,11 @@ class SAM_casadi():
             self.calculate_tau(u_ref_sym)
 
             nu_dot = self.Minv @ (self.tau - ca.mtimes(self.C,self.nu_r) - ca.mtimes(self.D,self.nu_r) - self.g_vec)
-            u_dot = self.actuator_dynamics(u, u_ref_sym)
+            u_dot = self.actuator_dynamics(u, u_ref_sym,dt_sym)
             eta_dot = self.eta_dynamics(eta, nu)
 
             x_dot = ca.vertcat(eta_dot, nu_dot, u_dot)
-            self.x_dot_sym = ca.Function('x_dot', [x_sym, u_ref_sym], [x_dot])
+            self.x_dot_sym = ca.Function('x_dot', [x_sym, u_ref_sym, dt_sym], [x_dot])
             self.create_model = False
 
         # Export the casadi model to acados or for the LQR
@@ -373,30 +374,7 @@ class SAM_casadi():
         #return self.x_dot_sym(x, u_ref) # returns a ca.DM
         return self.x_dot_sym  # returns a casadi MX.function
 
-    # def export_dynamics_model(self):
-    #     # Create symbolic state and control variables
-    #     x_sym     = ca.MX.sym('x', 19,1)
-    #     u_ref_sym = ca.MX.sym('u_ref', 6,1)
-
-    #     # Create symbolic derivative
-    #     x_dot_sym = ca.MX.sym('x_dot', 19, 1)
-        
-    #     # Set up acados model
-    #     model = AcadosModel()
-    #     model.name = 'SAM_equation_system'
-    #     model.x    = x_sym
-    #     model.xdot = x_dot_sym
-    #     model.u    = u_ref_sym
-
-    #     # Declaration of explicit and implicit expressions
-    #     x_dot  = self.dynamics(export=True)    # extract casadi.MX function
-    #     f_expl = ca.vertcat(x_dot(x_sym[:13], x_sym[13:]), u_ref_sym)
-    #     f_impl = x_dot_sym - f_expl
-    #     model.f_expl_expr = f_expl
-    #     model.f_impl_expr = f_impl
-
-    #     return model
-
+    
     def calculate_system_state(self, nu, eta, u_control):
         """
         Extract speeds etc. based on state and control inputs
@@ -678,7 +656,7 @@ class SAM_casadi():
         q_dot = ca.mtimes(T_q_n_b, om) + self.gamma / 2 * (1 - ca.mtimes(q.T, q)) * q
         return ca.vertcat(pos_dot, q_dot)
 
-    def actuator_dynamics(self, u_cur, u_ref):
+    def actuator_dynamics(self, u_cur, u_ref,dt_sym):
         """
         Compute the actuator dynamics.
         delta_X and rpmX are assumed to be instantaneous
@@ -688,7 +666,7 @@ class SAM_casadi():
 
         u_dot = ca.MX.zeros(6)
 
-        u_dot = (u_ref - u_cur)/self.dt
+        u_dot = (u_ref - u_cur)/dt_sym
 
         u_dot[0] = ca.if_else(ca.fabs(u_dot[0]) > self.vbs.x_vbs_dot_max,
                           self.vbs.x_vbs_dot_max * ca.sign(u_dot[0]),
